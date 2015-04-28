@@ -1,6 +1,0 @@
-ADD $s1, $s2, $s3
-BEQ $s1, $s2, addr
-SW $s1, 4*12($s1)
-SUB $s1, $s2, $s3
-addr: ADD $s1, $s2, $zero
-j addr
