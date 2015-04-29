@@ -4,15 +4,17 @@
 
 import sys
 import struct
-from constants import REGISTER_INV, R_INSTRUCTIONS, J_INSTRUCTIONS, I_INSTRUCTIONS, OPERATION
+from constants import *
+
 
 class AssemblyDecoder:
+
     def __init__(self):
         self._assembly_code = []
         self._assembly_instruction = []
         self._opath = ""
 
-    def process_file(self, path, opath = ""):
+    def process_file(self, path, opath=""):
         if not opath:
             opath = path + '.s'
         self._opath = opath
@@ -29,61 +31,73 @@ class AssemblyDecoder:
                 byte4 = f.read(4)
         print(self._assembly_code)
 
+    def _analyze_r_type_assembly_code(self, code):
+        instruction = []
+        function = code & 0x0000003f
+        if [R_INSTRUCTIONS[function]] == 'bad_function_code':
+            print("Error while processing code:", code)
+        instruction.append(R_INSTRUCTIONS[function])
+        rs = (code & 0x03e00000) >> 21
+        rt = (code & 0x001f0000) >> 16
+        rd = (code & 0x0000f800) >> 11
+
+        instruction.append(REGISTER_INV[rd])
+        instruction.append(REGISTER_INV[rs])
+        instruction.append(REGISTER_INV[rt])
+        return instruction
+
+    def _analyze_j_type_assembly_code(self, code):
+        instruction = []
+        operation = (code & 0xfc000000) >> 26
+        instruction.append(J_INSTRUCTIONS[operation])
+        immediate = code & 0x03ffffff
+        immediate = immediate << 2
+        instruction.append(immediate)
+        return instruction
+
+    def _analyze_i_type_assembly_code(self, code):
+        instruction = []
+        operation = (code & 0xfc000000) >> 26
+        rs = (code & 0x03e00000) >> 21
+        rt = (code & 0x001f0000) >> 16
+        immediate = code & 0x0000ffff
+        if operation == 1:
+            if rt == 0:
+                instruction.append('bltz')
+            elif rt == 1:
+                instruction.append('bgez')
+            else:
+                print("Error while processing code:", code)
+        else:
+            if I_INSTRUCTIONS[operation] == "bad_function_code":
+                print("Error while processing code:", code)
+            else:
+                instruction.append(I_INSTRUCTIONS[operation])
+        if OPERATION[instruction[0]][1] == 2:
+            instruction.append(REGISTER_INV[rt])
+            s = "{}({})".format(immediate, REGISTER_INV[rs])
+            instruction.append(s)
+        elif OPERATION[instruction[0]][1] == 3:
+            instruction.append(REGISTER_INV[rs])
+            instruction.append(REGISTER_INV[rt])
+            instruction.append(immediate << 2)
+        elif OPERATION[instruction[0]][1] == 4:
+            instruction.append(REGISTER_INV[rt])
+            instruction.append(REGISTER_INV[rs])
+            instruction.append(immediate)
+        return instruction
+
     def _analyze_assembly_code(self):
         for code in self._assembly_code:
             print('{0:032b}'.format(code))
-            instruction = []
             operation = (code & 0xfc000000) >> 26
             print(operation)
             if operation == 0:
-                function = code & 0x0000003f
-                if [R_INSTRUCTIONS[function]] == 'bad_function_code':
-                    print("Error while processing code:", code)
-                    continue
-                instruction.append(R_INSTRUCTIONS[function])
-                rs = (code & 0x03e00000) >> 21
-                rt = (code & 0x001f0000) >> 16
-                rd = (code & 0x0000f800) >> 11
-                shamt = (code & 0x000008c0) >> 6
-
-                instruction.append(REGISTER_INV[rd])
-                instruction.append(REGISTER_INV[rs])
-                instruction.append(REGISTER_INV[rt])
+                instruction = self._analyze_r_type_assembly_code(code)
             elif operation == 2 or operation == 3:
-                instruction.append(J_INSTRUCTIONS[operation])
-                immediate = code & 0x03ffffff
-                immediate = immediate << 2
-                instruction.append(immediate)
+                instruction = self._analyze_j_type_assembly_code(code)
             else:
-                rs = (code & 0x03e00000) >> 21
-                rt = (code & 0x001f0000) >> 16
-                immediate = code & 0x0000ffff
-                if operation == 1:
-                    if rt == 0:
-                        instruction.append('bltz')
-                    elif rt == 1:
-                        instruction.append('bgez')
-                    else:
-                        print("Error while processing code:", code)
-                        continue
-                else:
-                    if I_INSTRUCTIONS[operation] == "bad_function_code":
-                        print("Error while processing code:", code)
-                        continue
-                    else:
-                        instruction.append(I_INSTRUCTIONS[operation])
-                if OPERATION[instruction[0]][1] == 1:
-                    instruction.append(REGISTER_INV[rt])
-                    s = "{}({})".format(immediate, REGISTER_INV[rs])
-                    instruction.append(s)
-                elif OPERATION[instruction[0]][1] == 3:
-                    instruction.append(REGISTER_INV[rs])
-                    instruction.append(REGISTER_INV[rt])
-                    instruction.append(immediate)
-                elif OPERATION[instruction[0]][1] == 4:
-                    instruction.append(REGISTER_INV[rt])
-                    instruction.append(REGISTER_INV[rs])
-                    instruction.append(immediate)
+                instruction = self._analyze_i_type_assembly_code(code)
             print(instruction)
             self._assembly_instruction.append(instruction)
 
@@ -95,7 +109,6 @@ class AssemblyDecoder:
                     string += str(ins) + " "
                 string += "\n"
                 f.write(string)
-
 
 
 def main():
@@ -111,4 +124,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
