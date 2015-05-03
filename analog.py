@@ -50,14 +50,17 @@ class AssemblyAnalogMachine(object):
         self.register[rd] = self.register[rs] & self.register[rt]
         self._advance_pc(4)
 
-    def _slt(self, rd, rs, rt):
-        s = self._get_signed_number(self.register[rs])
-        t = self.register[rt]
-        if s < t:
-            self.register[rd] = 1
+    def _beq(self, rs, rt, offset):
+        if self.register[rs] == self.register[rt]:
+            self._advance_pc(offset << 2)
         else:
-            self.register[rd] = 0
-        self._advance_pc(4)
+            self._advance_pc(4)
+
+    def _bne(self, rs, rt, offset):
+        if self.register[rs] != self.register[rt]:
+            self._advance_pc(offset << 2)
+        else:
+            self._advance_pc(4)
 
     def _break(self, rd, rs, rt):
         pass
@@ -74,32 +77,74 @@ class AssemblyAnalogMachine(object):
         self.LO = self.register[rs] % self.register[rt]
         self._advance_pc(4)
 
+    def _j(self, target):
+        self.pc = (self.pc & 0xf0000000) | (target << 2)
+
+    def _jal(self, target):
+        self.register[31] = self.pc + 4
+        self.pc = (self.pc & 0xf0000000) | (target << 2)
+
+    def _jr(self, rd, rs, rt):
+        self.pc = self.register[rs]
+
+    def _lb(self, rt, rs, offset):
+        self.register[rt] = self.memory[self.register[rs] + offset]
+        self._advance_pc(4)
+
+    def _lui(self, rt, rs, immediate):
+        self.register[rt] = immediate << 16
+        self._advance_pc(4)
+
+    def _lw(self, rt, rs, offset):
+        pos = self.register[rs] + offset
+        word = self.memory[pos]
+        word += self.memory[pos + 1] << 8
+        word += self.memory[pos + 2] << 16
+        word += self.memory[pos + 3] << 24
+        self.register[rt] = word
+        self._advance_pc(4)
+
+    def _mfhi(self, rd, rs, rt):
+        self.register[rd] = self.HI
+        self._advance_pc(4)
+
+    def _mflo(self, rd, rs, rt):
+        self.register[rd] = self.LO
+        self._advance_pc(4)
+
     def _mult(self, rd, rs, rt):
         self.LO = self.register[rs] * self.register[rt] & 0xffffffff
         self._advance_pc(4)
 
-    def _beq(self, rs, rt, offset):
-        if self.register[rs] == self.register[rt]:
-            self._advance_pc(offset << 2)
-        else:
-            self._advance_pc(4)
-
-    def _empty(self, **para):
+    def _noop(self, *argv):
+        self._advance_pc(4)
         pass
 
-    def _bne(self, rs, rt, offset):
-        if self.register[rs] != self.register[rt]:
-            self._advance_pc(offset << 2)
+    def _or(self, rd, rs, rt):
+        self.register[rd] = self.register[rs] | self.register[rt]
+        self._advance_pc(4)
+
+    def _ori(self, rt, rs, immediate):
+        self.register[rt] = self.register[rs] | immediate
+        self._advance_pc(4)
+
+    def _sb(self, rt, rs, offset):
+        pos = self.register[rs] + offset
+        self.memory[pos] = self.register[rt] & 0xff
+        self._advance_pc(4)
+
+    def _slt(self, rd, rs, rt):
+        s = self._get_signed_number(self.register[rs])
+        t = self.register[rt]
+        if s < t:
+            self.register[rd] = 1
         else:
-            self._advance_pc(4)
-
-    def _mfhi(self, rd):
-        self.register[rd] = self.HI
+            self.register[rd] = 0
         self._advance_pc(4)
 
-    def _mflo(self, rd):
-        self.register[rd] = self.LO
+    def _empty(self, *para):
         self._advance_pc(4)
+        pass
 
     def _get_signed_number(self, number):
         if number > CONST_MAXINTEGER:
@@ -164,6 +209,27 @@ class AssemblyAnalogMachine(object):
                 self.memory[self._heap_pointer + 1] = byte
                 self._heap_pointer += 1
                 byte = f.read(1)
+
+    def _exceute_current_instruction(self):
+        instruction = self.memory[self.pc]
+
+    def run(self):
+        ins = input("Please input the instruction:").strip().lower().split()
+        if ins[0] == "p":
+            if len(ins) == 1:
+                for i in range(32):
+                    print(str(i) + ":", self.register[i])
+            else:
+                try:
+                    re = int(ins[1])
+                    if re < 32:
+                        print(str(re) + ":", self.register[re])
+                    else:
+                        print("Bad Instruction!")
+                except ValueError:
+                    print("Bad Instruction!")
+        elif ins[0] == "n":
+            pass
 
     def _overflow_handler(self):
         pass
