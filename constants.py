@@ -76,9 +76,10 @@ OPERATION = {
     'sw': [43, 2],
     'beq': [4, 3],
     'bne': [5, 3],
+    'addi': [8, 4],
     'j': [2, 1],
     'jal': [3, 1],
-    'addi': [8, 4]
+    'noop': [0, 0]
 }
 
 R_INSTRUCTIONS = [

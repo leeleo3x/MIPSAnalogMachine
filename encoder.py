@@ -82,8 +82,8 @@ class AssemblyEncoder(object):
     def _analyze_i_type_assembly_instruction(self, instruction, pos):
         code = 0
         operation = OPERATION[instruction[0]]
+        code |= operation[0] << 26
         if operation[1] == 2:
-            code |= operation[0] << 26
             if instruction[1] not in REGISTER:
                 print("Invalid register identifier:", instruction[1])
                 return 0
@@ -102,7 +102,6 @@ class AssemblyEncoder(object):
                 return 0
         elif operation[1] == 3:
             register = instruction[1:4]
-            print(register)
             try:
                 addr = int(register[2])
                 addr = addr >> 2
@@ -110,8 +109,7 @@ class AssemblyEncoder(object):
             except ValueError:
                 if register[2] not in self._address:
                     return 0
-                addr = self._address[register[2]]\
-                    - pos * 4 - 4 - self._start_address
+                addr = self._address[register[2]] - pos * 4 - 4 - self._start_address
                 addr = addr >> 2
                 code |= addr & 0xffff
             register.pop(2)
@@ -119,8 +117,8 @@ class AssemblyEncoder(object):
                 if reg not in REGISTER:
                     print("Invalid register identifier:", reg)
                     return 0
-            code |= REGISTER[register[0]] << 21
-            code |= REGISTER[register[1]] << 16
+            code |= REGISTER[register[1]] << 21
+            code |= REGISTER[register[0]] << 16
             code |= OPERATION[instruction[0]][0] << 26
         elif operation[1] == 4:
             register = instruction[1:3]
@@ -132,13 +130,11 @@ class AssemblyEncoder(object):
             code |= REGISTER[register[0]] << 16
             try:
                 immediate = int(instruction[3])
-                immediate = immediate >> 2
-                code |= immediate & 0x1c
+                code |= immediate & 0xffff
             except ValueError:
                 print("Invalid immediate")
                 return 0
         return code
-
 
     def _analyze_per_line(self, pos):
         data = self._lines[pos]

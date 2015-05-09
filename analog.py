@@ -4,6 +4,7 @@
 
 from utilities import RegisterList
 from constants import *
+import struct
 
 CONST_MAXINTEGER = 2 ** 31 - 1
 CONST_MAXUNSIGNEDINTEGER = 2 ** 32 - 1
@@ -13,25 +14,27 @@ class AssemblyAnalogMachine(object):
     execute_dict = {}
 
     def __init__(self):
-        self.register = RegisterList()
+        self._register = RegisterList()
         self.memory = [0] * 64 * 1024
         self.pc = 0
-        self.HI = 0
-        self.LO = 0
-        self.heap_pointer = 0
-        self.stack_pointer = 0
+        self.npc = 4
+        self._HI = 0
+        self._LO = 0
+        self._heap_pointer = 0
+        self._stack_pointer = 0
+        self.file_name = ""
 
-    def _add(self, rd, rs, rt):
-        res = self.register[rs] + self.register[rt]
-        self.register[rd] = res
+    def _add(self, rd, rs, rt, shamt):
+        res = self._register[rs] + self._register[rt]
+        self._register[rd] = res
 
         if (
-                self.register[rs] <= CONST_MAXINTEGER and
-                self.register[rt] <= CONST_MAXINTEGER and
+                self._register[rs] <= CONST_MAXINTEGER and
+                self._register[rt] <= CONST_MAXINTEGER and
                 res > CONST_MAXINTEGER
                 or
-                self.register[rs] > CONST_MAXINTEGER and
-                self.register[rt] > CONST_MAXINTEGER and
+                self._register[rs] > CONST_MAXINTEGER and
+                self._register[rt] > CONST_MAXINTEGER and
                 res <= CONST_MAXINTEGER
         ):
             self._overflow_handler()
@@ -39,107 +42,195 @@ class AssemblyAnalogMachine(object):
             self._advance_pc(4)
 
     def _addi(self, rt, rs, immediate):
-        res = self.register[rs] + immediate
-        self.register[rt] = res
-
-    def _addu(self, rd, rs, rt):
-        self.register[rd] = self.register[rs] + self.register[rt]
+        res = self._register[rs] + immediate
+        self._register[rt] = res
         self._advance_pc(4)
 
-    def _and(self, rd, rs, rt):
-        self.register[rd] = self.register[rs] & self.register[rt]
+    def _addu(self, rd, rs, rt, shamt):
+        self._register[rd] = self._register[rs] + self._register[rt]
+        self._advance_pc(4)
+
+    def _and(self, rd, rs, rt, shamt):
+        self._register[rd] = self._register[rs] & self._register[rt]
         self._advance_pc(4)
 
     def _beq(self, rs, rt, offset):
-        if self.register[rs] == self.register[rt]:
+        if self._register[rs] == self._register[rt]:
+            self._advance_pc(offset << 2)
+        else:
+            self._advance_pc(4)
+
+    def _bgez(self, rs, rt, offset):
+        if self._register[rs] >= 0:
+            self._advance_pc(offset << 2)
+        else:
+            self._advance_pc(4)
+
+    def _bgezal(self, rs, rt, offset):
+        if self._register[rs] >= 0:
+            self._register[31] = self.pc + 8
+            self._advance_pc(offset << 2)
+        else:
+            self._advance_pc(4)
+
+    def _bgtz(self, rs, rt, offset):
+        if self._register[rs] > 0:
+            self._advance_pc(offset << 2)
+        else:
+            self._advance_pc(4)
+
+    def _blez(self, rs, rt, offset):
+        if self._register[rs] <= 0:
+            self._advance_pc(offset << 2)
+        else:
+            self._advance_pc(4)
+
+    def _bltz(self, rs, rt, offset):
+        if self._register[rs] < 0:
+            self._advance_pc(offset << 2)
+        else:
+            self._advance_pc(4)
+
+    def _bltzal(self, rs, rt, offset):
+        if self._register[rs] < 0:
+            self._register[31] = self.pc + 8
             self._advance_pc(offset << 2)
         else:
             self._advance_pc(4)
 
     def _bne(self, rs, rt, offset):
-        if self.register[rs] != self.register[rt]:
+        if self._register[rs] != self._register[rt]:
             self._advance_pc(offset << 2)
         else:
             self._advance_pc(4)
 
-    def _break(self, rd, rs, rt):
+    def _break(self, rd, rs, rt, shamt):
         pass
 
-    def _div(self, rd, rs, rt):
-        s_rs = self._get_signed_number(self.register[rs])
-        s_rt = self._get_signed_number(self.register[rt])
-        self.HI = int(s_rs / s_rt) & 0xffffffff
-        self.LO = (s_rs % s_rt) & 0xffffffff
+    def _div(self, rd, rs, rt, shamt):
+        s_rs = self._get_signed_number(self._register[rs])
+        s_rt = self._get_signed_number(self._register[rt])
+        self._HI = int(s_rs / s_rt) & 0xffffffff
+        self._LO = (s_rs % s_rt) & 0xffffffff
         self._advance_pc(4)
 
-    def _divu(self, rd, rs, rt):
-        self.HI = int(self.register[rs] / self.register[rt]) & 0xffffffff
-        self.LO = self.register[rs] % self.register[rt]
+    def _divu(self, rd, rs, rt, shamt):
+        self._HI = int(self._register[rs] / self._register[rt]) & 0xffffffff
+        self._LO = self._register[rs] % self._register[rt]
         self._advance_pc(4)
 
     def _j(self, target):
-        self.pc = (self.pc & 0xf0000000) | (target << 2)
+        self.pc = self.npc
+        self.npc = (self.pc & 0xf0000000) | (target << 2)
 
     def _jal(self, target):
-        self.register[31] = self.pc + 4
-        self.pc = (self.pc & 0xf0000000) | (target << 2)
+        self._register[31] = self.pc + 8
+        self.pc = self.npc
+        self.npc = (self.pc & 0xf0000000) | (target << 2)
 
-    def _jr(self, rd, rs, rt):
-        self.pc = self.register[rs]
+    def _jr(self, rd, rs, rt, shamt):
+        self.pc = self.npc
+        self.npc = self._register[rs]
 
     def _lb(self, rt, rs, offset):
-        self.register[rt] = self.memory[self.register[rs] + offset]
+        self._register[rt] = self.memory[self._register[rs] + offset]
         self._advance_pc(4)
 
     def _lui(self, rt, rs, immediate):
-        self.register[rt] = immediate << 16
+        self._register[rt] = immediate << 16
         self._advance_pc(4)
 
     def _lw(self, rt, rs, offset):
-        pos = self.register[rs] + offset
+        pos = self._register[rs] + offset
         word = self.memory[pos]
         word += self.memory[pos + 1] << 8
         word += self.memory[pos + 2] << 16
         word += self.memory[pos + 3] << 24
-        self.register[rt] = word
+        self._register[rt] = word
         self._advance_pc(4)
 
-    def _mfhi(self, rd, rs, rt):
-        self.register[rd] = self.HI
+    def _mfhi(self, rd, rs, rt, shamt):
+        self._register[rd] = self._HI
         self._advance_pc(4)
 
-    def _mflo(self, rd, rs, rt):
-        self.register[rd] = self.LO
+    def _mflo(self, rd, rs, rt, shamt):
+        self._register[rd] = self._LO
         self._advance_pc(4)
 
-    def _mult(self, rd, rs, rt):
-        self.LO = self.register[rs] * self.register[rt] & 0xffffffff
+    def _mult(self, rd, rs, rt, shamt):
+        self._LO = self._register[rs] * self._register[rt] & 0xffffffff
         self._advance_pc(4)
 
     def _noop(self, *argv):
         self._advance_pc(4)
         pass
 
-    def _or(self, rd, rs, rt):
-        self.register[rd] = self.register[rs] | self.register[rt]
+    def _or(self, rd, rs, rt, shamt):
+        self._register[rd] = self._register[rs] | self._register[rt]
         self._advance_pc(4)
 
     def _ori(self, rt, rs, immediate):
-        self.register[rt] = self.register[rs] | immediate
+        self._register[rt] = self._register[rs] | immediate
         self._advance_pc(4)
 
     def _sb(self, rt, rs, offset):
-        pos = self.register[rs] + offset
-        self.memory[pos] = self.register[rt] & 0xff
+        pos = self._register[rs] + offset
+        self.memory[pos] = self._register[rt] & 0xff
         self._advance_pc(4)
 
-    def _slt(self, rd, rs, rt):
-        s = self._get_signed_number(self.register[rs])
-        t = self.register[rt]
+    def _sll(self, rd, rs, rt, shamt):
+        self._register[rd] = self._register[rt] << shamt
+        self._advance_pc(4)
+
+    def _sllv(self, rd, rs, rt, shamt):
+        self._register[rd] = self._register[rs] << self._register[rt]
+        self._advance_pc(4)
+
+    def _slt(self, rd, rs, rt, shamt):
+        s = self._get_signed_number(self._register[rs])
+        t = self._get_signed_number(self._register[rt])
         if s < t:
-            self.register[rd] = 1
+            self._register[rd] = 1
         else:
-            self.register[rd] = 0
+            self._register[rd] = 0
+        self._advance_pc(4)
+
+    def _sra(self, rd, rs, rt, shamt):
+        self._register[rd] = self._get_signed_number(self._register[rt]) >> shamt
+        self._advance_pc(4)
+
+    def _srl(self, rd, rs, rt, shamt):
+        self._register[rd] = self._register[rt] >> shamt
+        self._advance_pc(4)
+
+    def _srlv(self, rd, rs, rt, shamt):
+        self._register[rd] = self._register[rt] >> self._register[rs]
+        self._advance_pc(4)
+
+    def _sub(self, rd, rs, rt, shamt):
+        s = self._get_signed_number(self._register[rs])
+        t = self._get_signed_number(self._register[rt])
+        self._register[rd] = s - t
+        self._advance_pc(4)
+
+    def _subu(self, rd, rs, rt, shamt):
+        self._register[rd] = self._register[rs] - self._register[rt]
+        self._advance_pc(4)
+
+    def _sw(self, rt, rs, offset):
+        pos = self._register[rs] + offset
+        word = self._register[rt]
+        self.memory[pos] = word & 0xff
+        self.memory[pos + 1] = (word & 0xff00) >> 8
+        self.memory[pos + 2] = (word & 0xff0000) >> 16
+        self.memory[pos + 3] = (word & 0xff000000) >> 24
+        self._advance_pc(4)
+
+    def _syscall(self, rd, rs, rt, shamt):
+        pass
+
+    def _xor(self, rd, rs, rt, shamt):
+        self._register[rd] = self._register[rs] ^ self._register[rt]
         self._advance_pc(4)
 
     def _empty(self, *para):
@@ -161,13 +252,14 @@ class AssemblyAnalogMachine(object):
                 func = getattr(self, instruction_name)
             except AttributeError:
                 func = self._empty
-        rs = (code & 0x03e00000) >> 21
-        rt = (code & 0x001f0000) >> 16
-        rd = (code & 0x0000f800) >> 11
-        func(rd, rs, rt)
+        rs = (instruction & 0x03e00000) >> 21
+        rt = (instruction & 0x001f0000) >> 16
+        rd = (instruction & 0x0000f800) >> 11
+        shamt = (instruction & 0x000007c0) >> 6
+        func(rd, rs, rt, shamt)
 
     def _execute_i_type_instruction(self, instruction):
-        operation = instruction & 0xfc000000
+        operation = (instruction & 0xfc000000) >> 26
         instruction_name = I_INSTRUCTIONS[operation]
         if instruction_name == 'bad_function_code':
             func = self._empty
@@ -177,12 +269,12 @@ class AssemblyAnalogMachine(object):
                 func = getattr(self, instruction_name)
             except AttributeError:
                 func = self._empty
-        rs = (code & 0x03e00000) >> 21
-        rt = (code & 0x001f0000) >> 16
-        immediate = (code & 0x0000ffff)
-        func(rs, rt, immediate)
+        rs = (instruction & 0x03e00000) >> 21
+        rt = (instruction & 0x001f0000) >> 16
+        immediate = (instruction & 0x0000ffff)
+        func(rt, rs, immediate)
 
-    def _execeute_j_type_instruction(self, instruction):
+    def _execute_j_type_instruction(self, instruction):
         operation = instruction & 0xfc000000
         target = instruction & 0x03ffffff
         instruction_name = J_INSTRUCTIONS[operation]
@@ -197,49 +289,91 @@ class AssemblyAnalogMachine(object):
         func(target)
 
     def _execute_instruction(self, instruction):
-        pass
+        print("executing instruction: " + "{0:032b}".format(instruction))
+        opcode = (instruction & 0xfc000000) >> 26
+        if opcode == 0:
+            self._execute_r_type_instruction(instruction)
+        elif opcode == 2 or opcode == 3:
+            self._execute_j_type_instruction(instruction)
+        else:
+            self._execute_i_type_instruction(instruction)
 
     def _advance_pc(self, offset):
-        self.pc += offset
+        self.pc = self.npc
+        self.npc += offset
 
     def import_data(self, path):
         with open(path, 'rb') as f:
             byte = f.read(1)
             while byte:
-                self.memory[self._heap_pointer + 1] = byte
+                self.memory[self._heap_pointer] = struct.unpack('B', byte)[0]
                 self._heap_pointer += 1
                 byte = f.read(1)
+        print("Import data finished")
 
-    def _exceute_current_instruction(self):
+    def _execute_current_instruction(self):
         instruction = self.memory[self.pc]
+        instruction += self.memory[self.pc + 1] << 8
+        instruction += self.memory[self.pc + 2] << 16
+        instruction += self.memory[self.pc + 3] << 24
+        self._execute_instruction(instruction)
+
+    def _print_register_data(self, *pos):
+        if len(pos) == 0:
+            for data in self._register:
+                print(data)
+        else:
+            try:
+                re = int(pos[0])
+                if re < 32:
+                    print(str(re) + ":", self._register[re])
+                else:
+                    print("Register address out of range!")
+            except ValueError:
+                print("Bad Instruction!")
+
+    def _print_memory_data(self, pos):
+        try:
+            pos = int(pos)
+            if pos < 64 * 1024:
+                print(str(pos) + ":", self.memory[pos])
+            else:
+                print("Memory address out of range!")
+        except ValueError:
+            print("Bad Instruction!")
+
+    def _print_pointer_position(self):
+        print(self.pc)
 
     def run(self):
-        ins = input("Please input the instruction:").strip().lower().split()
-        if ins[0] == "p":
-            if len(ins) == 1:
-                for i in range(32):
-                    print(str(i) + ":", self.register[i])
-            else:
+        while True:
+            ins = input("Please input the instruction:").strip().lower().split()
+            if ins[0] == "p":
+                if len(ins) == 1:
+                    self._print_register_data()
+                else:
+                    self._print_register_data(ins[1])
+            elif ins[0] == "n":
+                self._execute_current_instruction()
+            elif ins[0] == "m":
+                self._print_memory_data(ins[1])
+            elif ins[0] == 'load':
+                self.file_name = ins[1]
+                # self.import_data(self.file_name)
                 try:
-                    re = int(ins[1])
-                    if re < 32:
-                        print(str(re) + ":", self.register[re])
-                    else:
-                        print("Bad Instruction!")
-                except ValueError:
-                    print("Bad Instruction!")
-        elif ins[0] == "n":
-            pass
+                    self.import_data(self.file_name)
+                except:
+                    print("Error while importing " + self.file_name)
+            elif ins[0] == 's':
+                self._print_pointer_position()
 
     def _overflow_handler(self):
-        pass
+        print("Warning: an overflow occurs")
 
 
 def main():
     a = AssemblyAnalogMachine()
-    print(a.execute_dict)
-    for i in range(2 ** 6):
-        a._execute_r_instruction(i)
+    a.run()
 
 if __name__ == '__main__':
     main()
