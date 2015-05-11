@@ -320,13 +320,13 @@ class AssemblyAnalogMachine(object):
 
     def _print_register_data(self, *pos):
         if len(pos) == 0:
-            for data in self._register:
-                print(data)
+            for i in range(32):
+                print("register[" + str(i) + "]: " + str(self._register[i]))
         else:
             try:
                 re = int(pos[0])
                 if re < 32:
-                    print(str(re) + ":", self._register[re])
+                    print("register[" + str(re) + "]: " + str(self._register[re]))
                 else:
                     print("Register address out of range!")
             except ValueError:
@@ -336,18 +336,18 @@ class AssemblyAnalogMachine(object):
         try:
             pos = int(pos)
             if pos < 64 * 1024:
-                print(str(pos) + ":", self.memory[pos])
+                print("memory[" + str(pos) + "]: " + str(self._register[pos]))
             else:
                 print("Memory address out of range!")
         except ValueError:
             print("Bad Instruction!")
 
     def _print_pointer_position(self):
-        print(self.pc)
+        print("pc: " + str(self.pc))
 
     def run(self):
         while True:
-            ins = input("Please input the instruction:").strip().lower().split()
+            ins = input("(Analog): ").strip().lower().split()
             if ins[0] == "p":
                 if len(ins) == 1:
                     self._print_register_data()
@@ -359,7 +359,6 @@ class AssemblyAnalogMachine(object):
                 self._print_memory_data(ins[1])
             elif ins[0] == 'load':
                 self.file_name = ins[1]
-                # self.import_data(self.file_name)
                 try:
                     self.import_data(self.file_name)
                 except:
