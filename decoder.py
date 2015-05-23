@@ -19,7 +19,7 @@ class AssemblyDecoder:
             opath = path + '.s'
         self._opath = opath
         self._import_data(path)
-        elf._analyze_assembly_code()
+        self._analyze_assembly_code()
         self._write_to_file()
 
     def _import_data(self, path):

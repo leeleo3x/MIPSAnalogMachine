@@ -129,7 +129,7 @@ class AssemblyEncoder(object):
             code |= REGISTER[register[1]] << 21
             code |= REGISTER[register[0]] << 16
             try:
-                immediate = int(instruction[3])
+                immediate = int(self._eval(instruction[3]))
                 code |= immediate & 0xffff
             except ValueError:
                 print("Invalid immediate")
@@ -162,8 +162,10 @@ class AssemblyEncoder(object):
         f.close
 
     def _eval(self, expression):
+        print('test')
         ns = {'__builtins__': None}
         num = eval(expression, ns)
+        print(num)
         return num
 
 def main():

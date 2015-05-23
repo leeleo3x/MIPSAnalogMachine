@@ -348,6 +348,8 @@ class AssemblyAnalogMachine(object):
     def run(self):
         while True:
             ins = input("(Analog): ").strip().lower().split()
+            if len(ins) == 0:
+                continue
             if ins[0] == "p":
                 if len(ins) == 1:
                     self._print_register_data()
