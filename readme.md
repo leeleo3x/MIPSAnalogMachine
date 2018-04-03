@@ -16,8 +16,8 @@
 - Remove unecessary characters
 - Store each instruction by syntax token
 - Use RegExp to extract necessary information
-- Match preserved keywords and translate to assembly codes
-- Translate the asm to binary file
+- Match preserved keywords with extracted infomation and translate them into assembly codes
+- Translate the asm code into binary file
 
 ## Disassembler
 
